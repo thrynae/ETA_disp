@@ -1,13 +1,16 @@
-function out=ETA_disp(N_total,n,then)
+function out=ETA_disp(N_total,n,then,per_it_display)
 %Display the estimated time of completion of a looping process.
 %
 %input:
 %  N_total: total number of iterations
-%  n: current count of iterations
+%  n: current count of iterations (will be adjusted up to eps if lower than that)
 %  then: the output of the now function when the loop began
+%  per_it_display: (optional, default is 0) 0 for automatic, -1 to display time per iteration on
+%                             the last line, or 1 to print iterations per seconds on the last line.
 %output:
 %  if called without output arguments, the message is printed to the command window, otherwise the
 %  message is returned in a cell array.
+%  The time remaining is capped at 10^10.
 %
 % The output for tic was introduced in R2008b, so tic/toc can't be nested in all releases, while
 % this implementation can be nested in any release.
@@ -25,57 +28,75 @@ function out=ETA_disp(N_total,n,then)
 %   N=10^6;then=now;
 %   for n=1:N
 %       pause((1+rand)*2/N)
-%       if mod(n,10^4)==0 %avoid spending too much time printing the ETA
+%       if mod(n,10^4)==0 %Avoid spending too much time printing the ETA.
 %           ETA_disp(N,n,then)
 %       end
 %   end
 %
-%  _______________________________________________________________________
-% | Compatibility | Windows 10  | Ubuntu 20.04 LTS | MacOS 10.15 Catalina |
-% |---------------|-------------|------------------|----------------------|
-% | ML R2020a     |  works      |  not tested      |  not tested          |
-% | ML R2018a     |  works      |  works           |  not tested          |
-% | ML R2015a     |  works      |  works           |  not tested          |
-% | ML R2011a     |  works      |  works           |  not tested          |
-% | ML 6.5 (R13)  |  works      |  not tested      |  not tested          |
-% | Octave 5.2.0  |  works      |  works           |  not tested          |
-% | Octave 4.4.1  |  works      |  not tested      |  works               |
-% """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+%  _____________________________________________________________________________
+% | Compatibility   | Windows XP/7/10 | Ubuntu 20.04 LTS | MacOS 10.15 Catalina |
+% |-----------------|-----------------|------------------|----------------------|
+% | ML R2020b       | W10: works      |  not tested      |  not tested          |
+% | ML R2018a       | W10: works      |  works           |  not tested          |
+% | ML R2015a       | W10: works      |  works           |  not tested          |
+% | ML R2011a       | W10: works      |  works           |  not tested          |
+% | ML R2010b       | not tested      |  works           |  not tested          |
+% | ML R2010a       | W7:  works      |  not tested      |  not tested          |
+% | ML 7.1 (R14SP3) | XP:  works      |  not tested      |  not tested          |
+% | ML 6.5 (R13)    | W10: works      |  not tested      |  not tested          |
+% | Octave 6.1.0    | W10: works      |  not tested      |  not tested          |
+% | Octave 5.2.0    | W10: works      |  works           |  not tested          |
+% | Octave 4.4.1    | W10: works      |  not tested      |  works               |
+% """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 %
-% Version: 1.0.1
-% Date:    2020-06-11
+% Version: 1.1
+% Date:    2020-12-08
 % Author:  H.J. Wisselink
 % Licence: CC by-nc-sa 4.0 ( http://creativecommons.org/licenses/by-nc-sa/4.0 )
-% Email=  'h_j_wisselink*alumnus_utwente_nl';
+% Email = 'h_j_wisselink*alumnus_utwente_nl';
 % Real_email = regexprep(Email,{'*','_'},{'@','.'})
 
-clc
 persistent legacy
 if isempty(legacy)
-    %addtodate was probably added in ML7.0
-    legacy.addtodate=ifversion('<',7,'Octave','<',4);
+    % The addtodate function was probably introduced in ML7.0, but the 'second' option was only
+    % implemented later, at the latest in R2010a.
+    legacy.addtodate=ifversion('<','R2010a','Octave','<',4);
 end
-
-t=(now-then)*(24*60*60);%equivalent to t=toc(h_tic);
-t_min_total=floor(t/60);t_sec_total=round(t-60*t_min_total);
-f=n/N_total;t_r=round((t-f*t)/f);
+if nargin<4 || numel(per_it_display)>1,per_it_display=0;end
+n=max(eps,n); % Ensure n is non-zero, which would cause problems later.
+t=(now-then)*(24*60*60); % This is equivalent to t=toc(h_tic);
+t_min_total=floor(t/60);t_sec_total=round(t-60*t_min_total); % Calculate time elapsed.
+f=n/N_total;t_r=min(10^10,round((t-f*t)/f)); % Calculation fraction done and time remaining.
 if legacy.addtodate
     ETA=datestr(now+(t_r/(24*60*60)),'HH:MM:SS');
 else
     ETA=datestr(addtodate(now,t_r,'second'),'HH:MM:SS');
 end
-t_per_it=t/n;
-t_min=floor(t_per_it/60);t_sec=t_per_it-60*t_min;
+t_per_it=t/n; % This is in seconds per iteration.
+if abs(per_it_display)~=1 % Revert to dynamic if the input is invalid.
+    if t_per_it>0.5
+        per_it_display=-1; % Display time per iteration.
+    else
+        per_it_display= 1; % Display iterations per second.
+    end
+end
+if per_it_display==-1
+    t_min=floor(t_per_it/60);t_sec=t_per_it-60*t_min;
+    per_it_display=sprintf('%02d:%05.2f per iteration',t_min,t_sec);
+else
+    per_it_display=sprintf('%.1f iterations per second',1/t_per_it);
+end
 
 out=cell(1,3);
-out{1}=sprintf('%05.1f%% done after a total time of %02d:%02d.\n',...
+out{1}=sprintf('%05.1f%% done after a total time of %02d:%02d.',...
     100*n/N_total,t_min_total,t_sec_total);
-out{2}=sprintf('estimated time of completion: %s\n',...
+out{2}=sprintf('estimated time of completion: %s',...
     ETA);
-out{3}=sprintf('(%02d:%05.2f per iteration, %d iterations left)\n',...
-    t_min,t_sec,N_total-n);
+out{3}=sprintf('(%s, %d iterations left)',...
+    per_it_display,N_total-n);
 if nargout==0
-    fprintf('%s',out{:});
+    clc
+    fprintf('%s\n',out{:});
     clear out;
 end
 end
@@ -103,30 +124,35 @@ function tf=ifversion(test,Rxxxxab,Oct_flag,Oct_test,Oct_ver)
 % ifversion('>=','R2009a') returns true when run on R2009a or later
 % ifversion('<','R2016a') returns true when run on R2015b or older
 % ifversion('==','R2018a') returns true only when run on R2018a
-% ifversion('==',9.8) returns true only when run on R2020a
+% ifversion('==',9.9) returns true only when run on R2020b
 % ifversion('<',0,'Octave','>',0) returns true only on Octave
+% ifversion('<',0,'Octave','>=',6) returns true only on Octave 6 and higher
 %
 % The conversion is based on a manual list and therefore needs to be updated manually, so it might
 % not be complete. Although it should be possible to load the list from Wikipedia, this is not
 % implemented.
 %
-%  _______________________________________________________________________
-% | Compatibility | Windows 10  | Ubuntu 20.04 LTS | MacOS 10.15 Catalina |
-% |---------------|-------------|------------------|----------------------|
-% | ML R2020a     |  works      |  not tested      |  not tested          |
-% | ML R2018a     |  works      |  works           |  not tested          |
-% | ML R2015a     |  works      |  works           |  not tested          |
-% | ML R2011a     |  works      |  works           |  not tested          |
-% | ML 6.5 (R13)  |  works      |  not tested      |  not tested          |
-% | Octave 5.2.0  |  works      |  works           |  not tested          |
-% | Octave 4.4.1  |  works      |  not tested      |  works               |
-% """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+%  _____________________________________________________________________________
+% | Compatibility   | Windows XP/7/10 | Ubuntu 20.04 LTS | MacOS 10.15 Catalina |
+% |-----------------|-----------------|------------------|----------------------|
+% | ML R2020b       | W10: works      |  not tested      |  not tested          |
+% | ML R2018a       | W10: works      |  works           |  not tested          |
+% | ML R2015a       | W10: works      |  works           |  not tested          |
+% | ML R2011a       | W10: works      |  works           |  not tested          |
+% | ML R2010b       | not tested      |  works           |  not tested          |
+% | ML R2010a       | W7:  works      |  not tested      |  not tested          |
+% | ML 7.1 (R14SP3) | XP:  works      |  not tested      |  not tested          |
+% | ML 6.5 (R13)    | W10: works      |  not tested      |  not tested          |
+% | Octave 6.1.0    | W10: works      |  not tested      |  not tested          |
+% | Octave 5.2.0    | W10: works      |  works           |  not tested          |
+% | Octave 4.4.1    | W10: works      |  not tested      |  works               |
+% """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 %
-% Version: 1.0.2
-% Date:    2020-05-20
+% Version: 1.0.5
+% Date:    2020-12-08
 % Author:  H.J. Wisselink
-% Licence: CC by-nc-sa 4.0 ( creativecommons.org/licenses/by-nc-sa/4.0 )
-% Email=  'h_j_wisselink*alumnus_utwente_nl';
+% Licence: CC by-nc-sa 4.0 ( https://creativecommons.org/licenses/by-nc-sa/4.0 )
+% Email = 'h_j_wisselink*alumnus_utwente_nl';
 % Real_email = regexprep(Email,{'*','_'},{'@','.'})
 
 %The decimal of the version numbers are padded with a 0 to make sure v7.10 is larger than v7.9.
@@ -141,20 +167,20 @@ if isempty(v_num)
     
     %get current version number
     v_num=version;
-    ii=strfind(v_num,'.');
-    if numel(ii)~=1,v_num(ii(2):end)='';ii=ii(1);end
+    ii=strfind(v_num,'.');if numel(ii)~=1,v_num(ii(2):end)='';ii=ii(1);end
     v_num=[str2double(v_num(1:(ii-1))) str2double(v_num((ii+1):end))];
-    v_num=v_num(1)+v_num(2)/100;
-    v_num=round(100*v_num);%remove float rounding errors
+    v_num=v_num(1)+v_num(2)/100;v_num=round(100*v_num);
     
     %get dictionary to use for ismember
     v_dict={...
-        'R13' 605;'R13SP1' 605;'R13SP2' 605;'R14' 700;'R14SP1' 700;'R14SP2' 700;'R14SP3' 701;...
-        'R2006a' 702;'R2006b' 703;'R2007a' 704;'R2007b' 705;'R2008a' 706;'R2008b' 707;...
-        'R2009a' 708;'R2009b' 709;'R2010a' 710;'R2010b' 711;'R2011a' 712;'R2011b' 713;...
-        'R2012a' 714;'R2012b' 800;'R2013a' 801;'R2013b' 802;'R2014a' 803;'R2014b' 804;...
-        'R2015a' 805;'R2015b' 806;'R2016a' 900;'R2016b' 901;'R2017a' 902;'R2017b' 903;...
-        'R2018a' 904;'R2018b' 905;'R2019a' 906;'R2019b' 907;'R2020a' 908};
+        'R13' 605;'R13SP1' 605;'R13SP2' 605;'R14' 700;'R14SP1' 700;'R14SP2' 700;
+        'R14SP3' 701;'R2006a' 702;'R2006b' 703;'R2007a' 704;'R2007b' 705;
+        'R2008a' 706;'R2008b' 707;'R2009a' 708;'R2009b' 709;'R2010a' 710;
+        'R2010b' 711;'R2011a' 712;'R2011b' 713;'R2012a' 714;'R2012b' 800;
+        'R2013a' 801;'R2013b' 802;'R2014a' 803;'R2014b' 804;'R2015a' 805;
+        'R2015b' 806;'R2016a' 900;'R2016b' 901;'R2017a' 902;'R2017b' 903;
+        'R2018a' 904;'R2018b' 905;'R2019a' 906;'R2019b' 907;'R2020a' 908;
+        'R2020b',909};
 end
 
 if octave
@@ -162,27 +188,30 @@ if octave
         warning('HJW:ifversion:NoOctaveTest',...
             ['No version test for Octave was provided.',char(10),...
             'This function might return an unexpected outcome.']) %#ok<CHARTEN>
-        %Use the same test as for Matlab, which will probably fail.
-        L=ismember(v_dict(:,1),Rxxxxab);
-        if sum(L)~=1
-            warning('HJW:ifversion:NotInDict',...
-                'The requested version is not in the hard-coded list.')
-            tf=NaN;return
+        if isnumeric(Rxxxxab)
+            v=0.1*Rxxxxab+0.9*fix(Rxxxxab);v=round(100*v);
         else
-            v=v_dict{L,2};
+            L=ismember(v_dict(:,1),Rxxxxab);
+            if sum(L)~=1
+                warning('HJW:ifversion:NotInDict',...
+                    'The requested version is not in the hard-coded list.')
+                tf=NaN;return
+            else
+                v=v_dict{L,2};
+            end
         end
     elseif nargin==4
-        %undocumented shorthand syntax: skip the 'Octave' argument
+        % Undocumented shorthand syntax: skip the 'Octave' argument.
         [test,v]=deal(Oct_flag,Oct_test);
-        %convert 4.1 to 401
+        % Convert 4.1 to 401.
         v=0.1*v+0.9*fix(v);v=round(100*v);
     else
         [test,v]=deal(Oct_test,Oct_ver);
-        %convert 4.1 to 401
+        % Convert 4.1 to 401.
         v=0.1*v+0.9*fix(v);v=round(100*v);
     end
 else
-    %convert R notation to numeric and convert 9.1 to 901
+    % Convert R notation to numeric and convert 9.1 to 901.
     if isnumeric(Rxxxxab)
         v=0.1*Rxxxxab+0.9*fix(Rxxxxab);v=round(100*v);
     else
@@ -197,15 +226,10 @@ else
     end
 end
 switch test
-    case '=='
-        tf= v_num == v;
-    case '<'
-        tf= v_num <  v;
-    case '<='
-        tf= v_num <= v;
-    case '>'
-        tf= v_num >  v;
-    case '>='
-        tf= v_num >= v;
+    case '==', tf= v_num == v;
+    case '<' , tf= v_num <  v;
+    case '<=', tf= v_num <= v;
+    case '>' , tf= v_num >  v;
+    case '>=', tf= v_num >= v;
 end
 end
