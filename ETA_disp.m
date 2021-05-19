@@ -1,5 +1,10 @@
-function out=ETA_disp(N_total,n,then,per_it_display)
+function out=ETA_disp(N_total,n,then,per_it_display,scale_estimate)
 %Display the estimated time of completion of a looping process.
+%
+% ETA_disp(N_total,n,then)
+% ETA_disp(N_total,n,then,per_it_display)
+% ETA_disp(N_total,n,then,per_it_display,scale_estimate)
+% msg=ETA_disp(___)
 %
 %input:
 %  N_total: total number of iterations
@@ -7,10 +12,13 @@ function out=ETA_disp(N_total,n,then,per_it_display)
 %  then: the output of the now function when the loop began
 %  per_it_display: (optional, default is 0) 0 for automatic, -1 to display time per iteration on
 %                             the last line, or 1 to print iterations per seconds on the last line.
+%  scale_estimate: the time remaining is multiplied by this factor (this doesn't change the rate
+%                                                         calculated over the processed iterations)
+%
 %output:
 %  if called without output arguments, the message is printed to the command window, otherwise the
 %  message is returned in a cell array.
-%  The time remaining is capped at 10^10.
+%  The time remaining is capped at 10^10 seconds.
 %
 % The output for tic was introduced in R2008b, so tic/toc can't be nested in all releases, while
 % this implementation can be nested in any release.
@@ -29,32 +37,25 @@ function out=ETA_disp(N_total,n,then,per_it_display)
 %   for n=1:N
 %       pause((1+rand)*2/N)
 %       if mod(n,10^4)==0 %Avoid spending too much time printing the ETA.
-%           ETA_disp(N,n,then)
+%           ETA_disp(N,n,then,1)%Print iterations/s instead of s/iteration.
 %       end
 %   end
 %
-%  _____________________________________________________________________________
-% | Compatibility   | Windows XP/7/10 | Ubuntu 20.04 LTS | MacOS 10.15 Catalina |
-% |-----------------|-----------------|------------------|----------------------|
-% | ML R2020b       | W10: works      |  not tested      |  not tested          |
-% | ML R2018a       | W10: works      |  works           |  not tested          |
-% | ML R2015a       | W10: works      |  works           |  not tested          |
-% | ML R2011a       | W10: works      |  works           |  not tested          |
-% | ML R2010b       | not tested      |  works           |  not tested          |
-% | ML R2010a       | W7:  works      |  not tested      |  not tested          |
-% | ML 7.1 (R14SP3) | XP:  works      |  not tested      |  not tested          |
-% | ML 6.5 (R13)    | W10: works      |  not tested      |  not tested          |
-% | Octave 6.1.0    | W10: works      |  not tested      |  not tested          |
-% | Octave 5.2.0    | W10: works      |  works           |  not tested          |
-% | Octave 4.4.1    | W10: works      |  not tested      |  works               |
-% """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%
+%|                                                                         |%
+%|  Version: 1.2.0                                                         |%
+%|  Date:    2021-05-19                                                    |%
+%|  Author:  H.J. Wisselink                                                |%
+%|  Licence: CC by-nc-sa 4.0 ( creativecommons.org/licenses/by-nc-sa/4.0 ) |%
+%|  Email = 'h_j_wisselink*alumnus_utwente_nl';                            |%
+%|  Real_email = regexprep(Email,{'*','_'},{'@','.'})                      |%
+%|                                                                         |%
+%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%
 %
-% Version: 1.1
-% Date:    2020-12-08
-% Author:  H.J. Wisselink
-% Licence: CC by-nc-sa 4.0 ( http://creativecommons.org/licenses/by-nc-sa/4.0 )
-% Email = 'h_j_wisselink*alumnus_utwente_nl';
-% Real_email = regexprep(Email,{'*','_'},{'@','.'})
+% Tested on several versions of Matlab (ML 6.5 and onward) and Octave (4.4.1 and onward), and on
+% multiple operating systems (Windows/Ubuntu/MacOS). For the full test matrix, see the HTML doc.
+% Compatibility considerations:
+% - This is expected to work on all releases.
 
 persistent legacy
 if isempty(legacy)
@@ -62,11 +63,14 @@ if isempty(legacy)
     % implemented later, at the latest in R2010a.
     legacy.addtodate=ifversion('<','R2010a','Octave','<',4);
 end
-if nargin<4 || numel(per_it_display)>1,per_it_display=0;end
+if nargin<4 || numel(per_it_display)~=1,per_it_display=0;end
+if nargin<5 || numel(scale_estimate)~=1,scale_estimate=1;end
 n=max(eps,n); % Ensure n is non-zero, which would cause problems later.
 t=(now-then)*(24*60*60); % This is equivalent to t=toc(h_tic);
 t_min_total=floor(t/60);t_sec_total=round(t-60*t_min_total); % Calculate time elapsed.
-f=n/N_total;t_r=min(10^10,round((t-f*t)/f)); % Calculation fraction done and time remaining.
+f=n/N_total;t_r=(t-f*t)/f; % Calculation fraction done and time remaining.
+if nargin>=5,t_r=t_r*scale_estimate;end % Scale the remainder estimate.
+t_r=min(10^10,round(t_r)); % Round and cap to 10^10 seconds.
 if legacy.addtodate
     ETA=datestr(now+(t_r/(24*60*60)),'HH:MM:SS');
 else
@@ -97,7 +101,7 @@ out{3}=sprintf('(%s, %d iterations left)',...
 if nargout==0
     clc
     fprintf('%s\n',out{:});
-    clear out;
+    clear
 end
 end
 function tf=ifversion(test,Rxxxxab,Oct_flag,Oct_test,Oct_ver)
@@ -132,28 +136,21 @@ function tf=ifversion(test,Rxxxxab,Oct_flag,Oct_test,Oct_ver)
 % not be complete. Although it should be possible to load the list from Wikipedia, this is not
 % implemented.
 %
-%  _____________________________________________________________________________
-% | Compatibility   | Windows XP/7/10 | Ubuntu 20.04 LTS | MacOS 10.15 Catalina |
-% |-----------------|-----------------|------------------|----------------------|
-% | ML R2020b       | W10: works      |  not tested      |  not tested          |
-% | ML R2018a       | W10: works      |  works           |  not tested          |
-% | ML R2015a       | W10: works      |  works           |  not tested          |
-% | ML R2011a       | W10: works      |  works           |  not tested          |
-% | ML R2010b       | not tested      |  works           |  not tested          |
-% | ML R2010a       | W7:  works      |  not tested      |  not tested          |
-% | ML 7.1 (R14SP3) | XP:  works      |  not tested      |  not tested          |
-% | ML 6.5 (R13)    | W10: works      |  not tested      |  not tested          |
-% | Octave 6.1.0    | W10: works      |  not tested      |  not tested          |
-% | Octave 5.2.0    | W10: works      |  works           |  not tested          |
-% | Octave 4.4.1    | W10: works      |  not tested      |  works               |
-% """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%
+%|                                                                         |%
+%|  Version: 1.0.6                                                         |%
+%|  Date:    2021-03-11                                                    |%
+%|  Author:  H.J. Wisselink                                                |%
+%|  Licence: CC by-nc-sa 4.0 ( creativecommons.org/licenses/by-nc-sa/4.0 ) |%
+%|  Email = 'h_j_wisselink*alumnus_utwente_nl';                            |%
+%|  Real_email = regexprep(Email,{'*','_'},{'@','.'})                      |%
+%|                                                                         |%
+%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%/%
 %
-% Version: 1.0.5
-% Date:    2020-12-08
-% Author:  H.J. Wisselink
-% Licence: CC by-nc-sa 4.0 ( https://creativecommons.org/licenses/by-nc-sa/4.0 )
-% Email = 'h_j_wisselink*alumnus_utwente_nl';
-% Real_email = regexprep(Email,{'*','_'},{'@','.'})
+% Tested on several versions of Matlab (ML 6.5 and onward) and Octave (4.4.1 and onward), and on
+% multiple operating systems (Windows/Ubuntu/MacOS). For the full test matrix, see the HTML doc.
+% Compatibility considerations:
+% - This is expected to work on all releases.
 
 %The decimal of the version numbers are padded with a 0 to make sure v7.10 is larger than v7.9.
 %This does mean that any numeric version input needs to be adapted. multiply by 100 and round to
@@ -180,7 +177,7 @@ if isempty(v_num)
         'R2013a' 801;'R2013b' 802;'R2014a' 803;'R2014b' 804;'R2015a' 805;
         'R2015b' 806;'R2016a' 900;'R2016b' 901;'R2017a' 902;'R2017b' 903;
         'R2018a' 904;'R2018b' 905;'R2019a' 906;'R2019b' 907;'R2020a' 908;
-        'R2020b',909};
+        'R2020b' 909;'R2021a' 910};
 end
 
 if octave
