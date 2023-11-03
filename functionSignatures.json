@@ -1,0 +1,26 @@
+{
+    "_schemaVersion": "1.0.0",
+    "_v_ETA_disp":"2.0.0",
+    "ETA_disp":
+    {
+        "inputs":
+        [
+            {"name":"N_total", "kind":"required",
+             "type":["numeric","scalar"],
+             "purpose":"Total number of iterations"},
+            {"name":"n", "kind":"required",
+             "type":["numeric","scalar"],
+             "purpose":"Current iteration"},
+            {"name":"then", "kind":"required",
+             "type":["numeric"],
+             "purpose":"Output of now() at start"},
+            {"name":"per_it_display", "kind":"positional",
+             "type":["numeric","scalar","choices={0,-1,1}"],
+             "purpose":"Iterations/sec or sec/iterations"},
+            {"name":"scale_estimate", "kind":"positional",
+             "type":["numeric","scalar"],
+             "purpose":"Scale time estimate"}
+        ]
+    }
+}
+
